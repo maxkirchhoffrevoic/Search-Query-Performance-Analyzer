@@ -7,20 +7,25 @@ import pandas as pd
 from config import OPENAI_API_KEY, OPENAI_MODEL, REASONING_EFFORT
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class AICategorizer:
     """Kategorisiert Search Terms mit Hilfe von ChatGPT"""
     
-    def __init__(self):
+    def __init__(self, model=None):
         self.client = openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-        self.model = OPENAI_MODEL
+        self.model = model if model else OPENAI_MODEL
+        self.reasoning_effort = REASONING_EFFORT
         self.fallback_model = "gpt-4-turbo-preview"  # Fallback falls GPT-5.1 nicht verfügbar
     
     def categorize_search_terms(
         self, 
         search_terms: List[str], 
-        batch_size: int = 50
+        batch_size: int = 50,
+        parallel: bool = True,
+        max_workers: int = 3
     ) -> Dict[str, str]:
         """
         Kategorisiert eine Liste von Search Terms
@@ -28,6 +33,8 @@ class AICategorizer:
         Args:
             search_terms: Liste von Search Terms
             batch_size: Anzahl der Terms pro Batch
+            parallel: Ob parallele Verarbeitung verwendet werden soll
+            max_workers: Anzahl paralleler Worker (nur wenn parallel=True)
             
         Returns:
             Dict: Mapping von Search Term zu Kategorie
@@ -37,12 +44,35 @@ class AICategorizer:
         
         categorization = {}
         
-        # Verarbeite in Batches
-        for i in range(0, len(search_terms), batch_size):
-            batch = search_terms[i:i+batch_size]
-            batch_categories = self._categorize_batch(batch)
-            categorization.update(batch_categories)
-            time.sleep(0.5)  # Rate limiting
+        # Erstelle Batches
+        batches = [search_terms[i:i+batch_size] for i in range(0, len(search_terms), batch_size)]
+        
+        if parallel and len(batches) > 1:
+            # Parallele Verarbeitung
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_batch = {
+                    executor.submit(self._categorize_batch, batch): batch 
+                    for batch in batches
+                }
+                
+                for future in as_completed(future_to_batch):
+                    try:
+                        batch_categories = future.result()
+                        categorization.update(batch_categories)
+                    except Exception as e:
+                        batch = future_to_batch[future]
+                        import sys
+                        print(f"ERROR: Batch failed: {e}", file=sys.stderr)
+                        # Fallback: Alle als Uncategorized
+                        for term in batch:
+                            categorization[term] = "Uncategorized"
+        else:
+            # Sequenzielle Verarbeitung (für kleine Batches oder wenn parallel=False)
+            for batch in batches:
+                batch_categories = self._categorize_batch(batch)
+                categorization.update(batch_categories)
+                if len(batches) > 1:
+                    time.sleep(0.2)  # Reduziertes Rate limiting
         
         return categorization
     
@@ -86,7 +116,7 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
             
             # Füge reasoning_effort hinzu, wenn GPT-5.1 verwendet wird
             if "gpt-5" in self.model.lower():
-                api_params["reasoning_effort"] = REASONING_EFFORT
+                api_params["reasoning_effort"] = self.reasoning_effort
             
             response = self.client.chat.completions.create(**api_params)
             

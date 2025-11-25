@@ -143,13 +143,18 @@ if uploaded_files:
             if 'Month' in st.session_state.processed_data.columns or 'Reporting Date' in st.session_state.processed_data.columns:
                 st.subheader("📅 Monatliche Trend-Analyse")
                 try:
-                    fig_monthly = st.session_state.viz_engine.create_monthly_trends(
-                        st.session_state.processed_data,
-                        date_col='Month' if 'Month' in st.session_state.processed_data.columns else None
-                    )
-                    st.plotly_chart(fig_monthly, use_container_width=True)
+                    # Prüfe ob Methode existiert
+                    if hasattr(st.session_state.viz_engine, 'create_monthly_trends'):
+                        fig_monthly = st.session_state.viz_engine.create_monthly_trends(
+                            st.session_state.processed_data,
+                            date_col='Month' if 'Month' in st.session_state.processed_data.columns else None
+                        )
+                        st.plotly_chart(fig_monthly, use_container_width=True)
+                    else:
+                        st.warning("⚠️ Methode create_monthly_trends nicht gefunden. Bitte App neu starten.")
                 except Exception as e:
                     st.warning(f"⚠️ Monatliche Trend-Analyse konnte nicht erstellt werden: {e}")
+                    st.exception(e)
             
             # Download Option
             csv = df_cleaned.to_csv(index=False).encode('utf-8')
@@ -187,7 +192,28 @@ else:
         st.info(f"📊 {len(df)} Search Queries bereit zur Kategorisierung")
     
     with col2:
-        batch_size = st.number_input("Batch Size", min_value=10, max_value=100, value=50, step=10)
+        # Modell-Auswahl
+        model_choice = st.selectbox(
+            "AI-Modell",
+            ["gpt-4-turbo-preview", "gpt-5.1"],
+            index=1 if "gpt-5" in st.session_state.categorizer.model.lower() else 0,
+            help="GPT-4 Turbo: Schneller & günstiger. GPT-5.1: Präziser durch Reasoning."
+        )
+        
+        # Reasoning Effort nur für GPT-5.1
+        if "gpt-5" in model_choice.lower():
+            reasoning_effort = st.selectbox(
+                "Reasoning Effort",
+                ["low", "medium", "high"],
+                index=2,
+                help="Höher = präziser aber langsamer"
+            )
+        else:
+            reasoning_effort = None
+        
+        batch_size = st.number_input("Batch Size", min_value=20, max_value=200, value=100, step=10, help="Größere Batches = schneller, aber mehr Tokens")
+        parallel_processing = st.checkbox("Parallele Verarbeitung", value=True, help="Mehrere Batches gleichzeitig verarbeiten (schneller)")
+        max_workers = st.slider("Max. parallele Requests", min_value=1, max_value=5, value=3, help="Mehr = schneller, aber mehr API-Calls gleichzeitig")
     
     # Debug: Zeige verfügbare Spalten
     with st.expander("🔍 Debug: Verfügbare Spalten"):
@@ -198,6 +224,12 @@ else:
             st.write("Beispiel Search Query:", df['Search Query'].iloc[0] if len(df) > 0 else "Keine Daten")
     
     if st.button("🚀 Starte AI-Kategorisierung", type="primary"):
+        # Aktualisiere Modell falls geändert
+        if model_choice != st.session_state.categorizer.model:
+            st.session_state.categorizer.model = model_choice
+            if reasoning_effort:
+                st.session_state.categorizer.reasoning_effort = reasoning_effort
+        
         # Finde die richtige Search Query Spalte
         search_col = None
         if 'Search Query' in df.columns:
@@ -211,6 +243,8 @@ else:
             st.write("Verfügbare Spalten:", list(df.columns))
             st.stop()
         
+        st.info(f"🤖 Verwende Modell: {model_choice}" + (f" (Reasoning: {reasoning_effort})" if reasoning_effort else ""))
+        
         with st.spinner("🤖 KI kategorisiert Search Queries... Das kann einen Moment dauern."):
             try:
                 search_terms = df[search_col].unique().tolist()
@@ -218,22 +252,37 @@ else:
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                # Kategorisiere in Batches
-                all_categories = {}
-                total_batches = (len(search_terms) + batch_size - 1) // batch_size
+                # Prüfe ob bereits Kategorien vorhanden sind (Caching)
+                existing_categories = {}
+                new_search_terms = []
                 
-                for i in range(0, len(search_terms), batch_size):
-                    batch = search_terms[i:i+batch_size]
-                    batch_num = (i // batch_size) + 1
-                    
-                    status_text.text(f"Verarbeite Batch {batch_num}/{total_batches}...")
-                    batch_categories = st.session_state.categorizer._categorize_batch(batch)
-                    all_categories.update(batch_categories)
-                    
-                    progress = min((i + batch_size) / len(search_terms), 1.0)
-                    progress_bar.progress(progress)
-                    
-                    time.sleep(0.5)  # Rate limiting
+                if st.session_state.categories:
+                    existing_categories = st.session_state.categories
+                    new_search_terms = [term for term in search_terms if term not in existing_categories]
+                    cached_count = len(search_terms) - len(new_search_terms)
+                    if cached_count > 0:
+                        status_text.text(f"📦 {cached_count} bereits kategorisiert, {len(new_search_terms)} neu zu kategorisieren...")
+                        progress_bar.progress(cached_count / len(search_terms))
+                else:
+                    new_search_terms = search_terms
+                
+                # Kategorisiere nur neue Search Terms
+                if new_search_terms:
+                    status_text.text(f"🔄 Kategorisiere {len(new_search_terms)} neue Search Queries...")
+                    new_categories = st.session_state.categorizer.categorize_search_terms(
+                        new_search_terms,
+                        batch_size=batch_size,
+                        parallel=parallel_processing,
+                        max_workers=max_workers
+                    )
+                    all_categories = {**existing_categories, **new_categories}
+                else:
+                    all_categories = existing_categories
+                    status_text.text("✅ Alle Search Queries bereits kategorisiert!")
+                
+                # Update Progress
+                progress_bar.progress(1.0)
+                status_text.text("✅ Kategorisierung abgeschlossen!")
                 
                 # Debug: Zeige Kategorisierungs-Ergebnisse
                 st.write(f"📊 Kategorien erhalten: {len(all_categories)}")
