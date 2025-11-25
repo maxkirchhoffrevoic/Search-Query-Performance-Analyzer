@@ -198,10 +198,10 @@ elif page == "🤖 AI Categorization":
                     status_text.empty()
                     
                     st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
-                        st.exception(e)
+                    
+                except Exception as e:
+                    st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
+                    st.exception(e)
         
         # Zeige Kategorien-Übersicht
         if st.session_state.categorized_data is not None:
