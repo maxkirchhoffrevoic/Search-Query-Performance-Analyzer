@@ -169,35 +169,35 @@ elif page == "🤖 AI Categorization":
             with st.spinner("🤖 KI kategorisiert Search Queries... Das kann einen Moment dauern."):
                 try:
                     search_terms = df[search_col].unique().tolist()
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    # Kategorisiere in Batches
+                    all_categories = {}
+                    total_batches = (len(search_terms) + batch_size - 1) // batch_size
+                    
+                    for i in range(0, len(search_terms), batch_size):
+                        batch = search_terms[i:i+batch_size]
+                        batch_num = (i // batch_size) + 1
                         
-                        # Kategorisiere in Batches
-                        all_categories = {}
-                        total_batches = (len(search_terms) + batch_size - 1) // batch_size
+                        status_text.text(f"Verarbeite Batch {batch_num}/{total_batches}...")
+                        batch_categories = st.session_state.categorizer._categorize_batch(batch)
+                        all_categories.update(batch_categories)
                         
-                        for i in range(0, len(search_terms), batch_size):
-                            batch = search_terms[i:i+batch_size]
-                            batch_num = (i // batch_size) + 1
-                            
-                            status_text.text(f"Verarbeite Batch {batch_num}/{total_batches}...")
-                            batch_categories = st.session_state.categorizer._categorize_batch(batch)
-                            all_categories.update(batch_categories)
-                            
-                            progress = min((i + batch_size) / len(search_terms), 1.0)
-                            progress_bar.progress(progress)
-                            
-                            time.sleep(0.5)  # Rate limiting
+                        progress = min((i + batch_size) / len(search_terms), 1.0)
+                        progress_bar.progress(progress)
                         
-                        # Füge Kategorien zu DataFrame hinzu
-                        df['Category'] = df[search_col].map(all_categories).fillna('Uncategorized')
-                        st.session_state.categorized_data = df
-                        st.session_state.categories = all_categories
-                        
-                        progress_bar.empty()
-                        status_text.empty()
-                        
-                        st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
+                        time.sleep(0.5)  # Rate limiting
+                    
+                    # Füge Kategorien zu DataFrame hinzu
+                    df['Category'] = df[search_col].map(all_categories).fillna('Uncategorized')
+                    st.session_state.categorized_data = df
+                    st.session_state.categories = all_categories
+                    
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
                         
                     except Exception as e:
                         st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
