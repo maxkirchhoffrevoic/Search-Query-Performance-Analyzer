@@ -290,8 +290,12 @@ else:
         # Opportunity Matrix
         st.subheader("🎯 Opportunity Matrix")
         st.markdown("""
-        **High Volume vs. Low Market Share**: Identifiziere ungenutzte Revenue-Opportunities.
-        Große Bubbles = Hohe Sales, Position zeigt Volume vs. Market Share.
+        Diese Grafik kombiniert drei Perspektiven auf einen Blick:
+        * **X-Achse (Market Volume)** zeigt, wie viele Impressions bzw. Suchanfragen in einer Kategorie anfallen.
+        * **Y-Achse (Market Share)** zeigt deinen Anteil an den Sales in dieser Kategorie.
+        * **Bubble-Größe & Farbe** repräsentieren deine absoluten Sales.
+        
+        Interpretation: Kategorien rechts oben sind bereits stark (hohes Volumen, hoher Marktanteil). Spannend für Wachstum sind vor allem Kategorien weit rechts, aber mit niedrigem Market Share – hier existiert viel Nachfrage, aber dein Anteil ist noch gering.
         """)
         
         try:
@@ -329,6 +333,13 @@ else:
         
         # Market Trend Analysis
         st.subheader("📈 Market Trend Analysis")
+        st.markdown("""
+        Diese Dual-Achsen-Linie zeigt pro Zeitraum oder Kategorie sowohl das **Gesamtvolumen (Impressions)** als auch deine **Sales Velocity**.
+        * Die blaue Linie misst, wie sich das Marktvolumen entwickelt – wächst die Kategorie oder schrumpft sie?
+        * Die orange Linie zeigt, ob deine eigenen Sales Schritt halten, schneller wachsen oder zurückfallen.
+        
+        Ein Auseinanderlaufen der Linien bedeutet: Das Marktvolumen entwickelt sich anders als dein Sales-Anteil. So erkennst du frühzeitig, wo du Marktanteile verlierst oder gewinnst.
+        """)
         
         try:
             fig_trend = st.session_state.viz_engine.create_trend_analysis(df)
@@ -341,7 +352,11 @@ else:
         # Share of Voice
         st.subheader("🎤 Share of Voice Tracking")
         st.markdown("""
-        **Brand Share**: Vergleiche deinen Impression Share vs. Sales Share pro Kategorie.
+        Der Share-of-Voice-Chart vergleicht pro Kategorie zwei Kennzahlen:
+        * **Impression Share %** – wie häufig wirst du angezeigt im Vergleich zum gesamten Markt?
+        * **Sales Share %** – wie viel Umsatz generierst du relativ zum Gesamtumsatz der Kategorie?
+        
+        Wenn der Impression Share deutlich höher ist als der Sales Share, gewinnst du zwar Sichtbarkeit, konvertierst aber nicht entsprechend. Umgekehrt deutet ein höherer Sales Share darauf hin, dass deine Listings sehr effizient verkaufen. Ideal ist ein ausgewogenes Verhältnis.
         """)
         
         try:
@@ -354,6 +369,13 @@ else:
         
         # Performance Heatmap
         st.subheader("🔥 Performance Heatmap")
+        st.markdown("""
+        Die Heatmap zeigt für jede Kategorie den Durchschnittswert der ausgewählten Metrik (z. B. CTR, Conversion Rate, Sales). 
+        * **Warme Farben** (rot/gelb) stehen für überdurchschnittliche Performance.
+        * **Kühle Farben** (grün/blau) weisen auf Potenzial oder Problembereiche hin.
+        
+        So erkennst du sofort, welche Kategorien bei der gewählten Kennzahl herausragen und welche optimiert werden sollten.
+        """)
         
         metric_option = st.selectbox(
             "Wähle Metrik",
@@ -388,6 +410,14 @@ else:
     else:
         # Filter-Optionen
         st.subheader("🔎 Filter & Suche")
+        st.markdown("""
+        In der Deep-Dive-Section kannst du jede Kategorie oder einen einzelnen Suchbegriff detailliert analysieren. 
+        * Nutze die Filter (Kategorie, Suchtext, minimale Impressions), um den Datensatz einzugrenzen.
+        * Sortiere nach der gewünschten Kennzahl, um Top-Performer oder Ausreißer zu finden.
+        * Die Kennzahlen am Kopf zeigen die aggregierten Werte für deine aktuelle Auswahl.
+        
+        Ideal für Ad-hoc-Analysen, wenn du konkrete Optimierungsmöglichkeiten pro Suchbegriff identifizieren willst.
+        """)
         
         col1, col2, col3 = st.columns(3)
         
