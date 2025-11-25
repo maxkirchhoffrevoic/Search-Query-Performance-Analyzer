@@ -134,11 +134,14 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
             return df
         
         # Gruppiere nach Kategorie
-        category_stats = df.groupby(category_col).agg({
+        # Finde die richtige Search Query Spalte
+        search_col = 'Search Query' if 'Search Query' in df.columns else 'Search Term'
+        agg_dict = {
             'Impressions': 'sum',
             'Sales': 'sum',
-            'Search Term': 'count'
-        }).reset_index()
+            search_col: 'count'
+        }
+        category_stats = df.groupby(category_col).agg(agg_dict).reset_index()
         
         category_stats.columns = [category_col, 'Total Impressions', 'Total Sales', 'Query Count']
         

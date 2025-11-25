@@ -150,18 +150,25 @@ elif page == "🤖 AI Categorization":
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.info(f"📊 {len(df)} Search Terms bereit zur Kategorisierung")
+            st.info(f"📊 {len(df)} Search Queries bereit zur Kategorisierung")
         
         with col2:
             batch_size = st.number_input("Batch Size", min_value=10, max_value=100, value=50, step=10)
         
         if st.button("🚀 Starte AI-Kategorisierung", type="primary"):
-            if 'Search Term' not in df.columns:
-                st.error("❌ 'Search Term' Spalte nicht gefunden in den Daten.")
+            # Finde die richtige Search Query Spalte
+            search_col = None
+            if 'Search Query' in df.columns:
+                search_col = 'Search Query'
+            elif 'Search Term' in df.columns:
+                search_col = 'Search Term'
             else:
-                with st.spinner("🤖 KI kategorisiert Search Terms... Das kann einen Moment dauern."):
-                    try:
-                        search_terms = df['Search Term'].unique().tolist()
+                st.error("❌ 'Search Query' oder 'Search Term' Spalte nicht gefunden in den Daten.")
+                st.stop()
+            
+            with st.spinner("🤖 KI kategorisiert Search Queries... Das kann einen Moment dauern."):
+                try:
+                    search_terms = df[search_col].unique().tolist()
                         progress_bar = st.progress(0)
                         status_text = st.empty()
                         
@@ -183,14 +190,14 @@ elif page == "🤖 AI Categorization":
                             time.sleep(0.5)  # Rate limiting
                         
                         # Füge Kategorien zu DataFrame hinzu
-                        df['Category'] = df['Search Term'].map(all_categories).fillna('Uncategorized')
+                        df['Category'] = df[search_col].map(all_categories).fillna('Uncategorized')
                         st.session_state.categorized_data = df
                         st.session_state.categories = all_categories
                         
                         progress_bar.empty()
                         status_text.empty()
                         
-                        st.success(f"✅ {len(search_terms)} Search Terms kategorisiert!")
+                        st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
                         
                     except Exception as e:
                         st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
@@ -244,10 +251,12 @@ elif page == "📊 Dashboard":
         
         try:
             # Bereite Daten für Opportunity Matrix vor
+            # Finde die richtige Search Query Spalte
+            search_col = 'Search Query' if 'Search Query' in df.columns else 'Search Term'
             category_stats = df.groupby('Category').agg({
                 'Impressions': 'sum',
                 'Sales': 'sum',
-                'Search Term': 'count'
+                search_col: 'count'
             }).reset_index()
             category_stats.columns = ['Category', 'Total Impressions', 'Total Sales', 'Query Count']
             
@@ -335,7 +344,7 @@ elif page == "🔍 Deep Dive Analytics":
             selected_category = st.selectbox("Kategorie", categories)
         
         with col2:
-            search_term_filter = st.text_input("Search Term suchen", "")
+            search_term_filter = st.text_input("Search Query suchen", "")
         
         with col3:
             min_impressions = st.number_input("Min. Impressions", min_value=0, value=0, step=100)
@@ -347,14 +356,17 @@ elif page == "🔍 Deep Dive Analytics":
             df_filtered = df_filtered[df_filtered['Category'] == selected_category]
         
         if search_term_filter:
-            df_filtered = df_filtered[
-                df_filtered['Search Term'].str.contains(search_term_filter, case=False, na=False)
-            ]
+            # Finde die richtige Search Query Spalte
+            search_col = 'Search Query' if 'Search Query' in df_filtered.columns else 'Search Term'
+            if search_col in df_filtered.columns:
+                df_filtered = df_filtered[
+                    df_filtered[search_col].str.contains(search_term_filter, case=False, na=False)
+                ]
         
         if min_impressions > 0:
             df_filtered = df_filtered[df_filtered['Impressions'] >= min_impressions]
         
-        st.info(f"📊 {len(df_filtered)} Search Terms gefunden")
+        st.info(f"📊 {len(df_filtered)} Search Queries gefunden")
         
         # Sortierung
         sort_by = st.selectbox(
@@ -368,7 +380,7 @@ elif page == "🔍 Deep Dive Analytics":
         df_filtered = df_filtered.sort_values(sort_by, ascending=ascending)
         
         # Zeige Ergebnisse
-        st.subheader("📋 Search Term Details")
+        st.subheader("📋 Search Query Details")
         
         # Wichtige Metriken
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -384,7 +396,9 @@ elif page == "🔍 Deep Dive Analytics":
             st.metric("Avg CVR", f"{df_filtered['Conversion Rate'].mean():.2f}%")
         
         # Daten-Tabelle
-        display_cols = ['Search Term', 'Category', 'Impressions', 'Clicks', 'CTR', 
+        # Finde die richtige Search Query Spalte
+        search_col = 'Search Query' if 'Search Query' in df_filtered.columns else 'Search Term'
+        display_cols = [search_col, 'Category', 'Impressions', 'Clicks', 'CTR', 
                        'Orders', 'Sales', 'Conversion Rate']
         available_cols = [col for col in display_cols if col in df_filtered.columns]
         
