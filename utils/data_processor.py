@@ -131,6 +131,7 @@ class DataProcessor:
             'CTR': ['Clicks: Click Rate %', 'CTR', 'ctr', 'Click-Through Rate', 'Click Rate'],
             'Orders': ['Purchases: Total Count', 'Orders', 'orders', 'Order', 'order', 'Total Orders', 'Purchases'],
             'Sales': ['Sales', 'sales', 'Revenue', 'revenue', 'Total Sales'],
+            'Purchase Price': ['Purchases: Price (Median)', 'Purchase Price', 'Price'],
             'Conversion Rate': ['Purchases: Purchase Rate %', 'Conversion Rate', 'conversion_rate', 'CVR', 'cvr', 'Conv. Rate', 'Purchase Rate'],
             # Brand-spezifische Spalten
             'Brand Impressions': ['Impressions: Brand Count'],
@@ -193,6 +194,26 @@ class DataProcessor:
         # Standardisiere Orders Spalte (kann Purchases: Total Count sein)
         if 'Orders' not in df.columns and 'Purchases: Total Count' in df.columns:
             df['Orders'] = df['Purchases: Total Count']
+        
+        # Berechne Sales aus Purchases * Price falls Sales nicht vorhanden
+        if 'Sales' not in df.columns or (df['Sales'].sum() == 0 if 'Sales' in df.columns else True):
+            sales_calculated = False
+            # Versuche verschiedene Kombinationen
+            if 'Orders' in df.columns and 'Purchase Price' in df.columns:
+                df['Sales'] = (df['Orders'].fillna(0) * df['Purchase Price'].fillna(0)).round(2)
+                sales_calculated = True
+            elif 'Orders' in df.columns and 'Purchases: Price (Median)' in df.columns:
+                df['Sales'] = (df['Orders'].fillna(0) * df['Purchases: Price (Median)'].fillna(0)).round(2)
+                sales_calculated = True
+            elif 'Purchases: Total Count' in df.columns and 'Purchases: Price (Median)' in df.columns:
+                df['Sales'] = (df['Purchases: Total Count'].fillna(0) * df['Purchases: Price (Median)'].fillna(0)).round(2)
+                if 'Orders' not in df.columns:
+                    df['Orders'] = df['Purchases: Total Count']
+                sales_calculated = True
+            
+            # Falls keine Sales berechnet werden konnten, setze auf 0
+            if not sales_calculated:
+                df['Sales'] = 0
         
         # Berechne Market Share (falls Sales vorhanden)
         if 'Sales' in df.columns:

@@ -1,6 +1,6 @@
 """
 Amazon Search Query Performance Analyzer
-Streamlit Haupt-App
+Streamlit Haupt-App - Alle Sections auf einer Seite
 """
 import streamlit as st
 import pandas as pd
@@ -17,7 +17,7 @@ st.set_page_config(
     page_title=APP_TITLE,
     page_icon=APP_ICON,
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Custom CSS
@@ -56,158 +56,154 @@ if 'viz_engine' not in st.session_state:
 # Header
 st.markdown(f'<div class="main-header">{APP_ICON} {APP_TITLE}</div>', unsafe_allow_html=True)
 
-# Sidebar
-with st.sidebar:
-    st.header("📋 Navigation")
-    page = st.radio(
-        "Wähle eine Seite",
-        ["📤 Data Ingestion", "🤖 AI Categorization", "📊 Dashboard", "🔍 Deep Dive Analytics"]
-    )
-    
-    st.divider()
-    
-    st.header("ℹ️ Info")
-    st.info("""
-    **Privacy First**: Alle Daten werden nur in deiner Browser-Session verarbeitet.
-    Keine Daten werden gespeichert oder an externe Server gesendet (außer ChatGPT API für Kategorisierung).
-    """)
+st.info("""
+**Privacy First**: Alle Daten werden nur in deiner Browser-Session verarbeitet.
+Keine Daten werden gespeichert oder an externe Server gesendet (außer ChatGPT API für Kategorisierung).
+""")
 
-# Main Content
-if page == "📤 Data Ingestion":
-    st.header("📤 Smart Ingestion Engine")
+# ============================================================================
+# SECTION 1: DATA INGESTION
+# ============================================================================
+st.header("📤 Smart Ingestion Engine")
+
+st.markdown("""
+### Drag & Drop Upload
+Lade deine Amazon Search Query Performance Reports hoch (.csv oder .xlsx).
+Du kannst auch mehrere Dateien gleichzeitig hochladen für Batch Processing.
+""")
+
+uploaded_files = st.file_uploader(
+    "Wähle Dateien aus",
+    type=['csv', 'xlsx', 'xls'],
+    accept_multiple_files=True,
+    help="Unterstützt CSV und Excel Dateien"
+)
+
+if uploaded_files:
+    with st.spinner("Verarbeite Dateien..."):
+        try:
+            if len(uploaded_files) == 1:
+                df = st.session_state.processor.load_file(uploaded_files[0])
+                st.success(f"✅ Datei geladen: {uploaded_files[0].name}")
+            else:
+                df = st.session_state.processor.load_multiple_files(uploaded_files)
+                st.success(f"✅ {len(uploaded_files)} Dateien geladen und kombiniert")
+            
+            # Daten bereinigen
+            df_cleaned = st.session_state.processor.clean_data(df)
+            st.session_state.processed_data = df_cleaned
+            
+            # Zeige Zusammenfassung
+            st.subheader("📈 Datenübersicht")
+            stats = st.session_state.processor.get_summary_stats(df_cleaned)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Queries", f"{stats['total_queries']:,}")
+            with col2:
+                st.metric("Total Impressions", f"{stats['total_impressions']:,.0f}")
+            with col3:
+                st.metric("Total Orders", f"{stats['total_orders']:,}")
+            with col4:
+                st.metric("Total Sales", f"€{stats['total_sales']:,.2f}")
+            
+            # Zeige Vorschau
+            st.subheader("👀 Datenvorschau")
+            st.dataframe(df_cleaned.head(20), use_container_width=True)
+            
+            # Download Option
+            csv = df_cleaned.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Bereinigte Daten als CSV herunterladen",
+                data=csv,
+                file_name="cleaned_sqp_data.csv",
+                mime="text/csv"
+            )
+            
+        except Exception as e:
+            st.error(f"❌ Fehler beim Verarbeiten der Dateien: {str(e)}")
+            st.exception(e)
+
+st.divider()
+
+# ============================================================================
+# SECTION 2: AI CATEGORIZATION
+# ============================================================================
+st.header("🤖 AI-Powered Categorization")
+
+if st.session_state.processed_data is None:
+    st.warning("⚠️ Bitte lade zuerst Daten hoch.")
+else:
+    df = st.session_state.processed_data
     
     st.markdown("""
-    ### Drag & Drop Upload
-    Lade deine Amazon Search Query Performance Reports hoch (.csv oder .xlsx).
-    Du kannst auch mehrere Dateien gleichzeitig hochladen für Batch Processing.
+    ### Automatische Kategorisierung
+    Die KI kategorisiert automatisch alle Search Queries in logische Produktkategorien.
     """)
     
-    uploaded_files = st.file_uploader(
-        "Wähle Dateien aus",
-        type=['csv', 'xlsx', 'xls'],
-        accept_multiple_files=True,
-        help="Unterstützt CSV und Excel Dateien"
-    )
+    col1, col2 = st.columns([2, 1])
     
-    if uploaded_files:
-        with st.spinner("Verarbeite Dateien..."):
+    with col1:
+        st.info(f"📊 {len(df)} Search Queries bereit zur Kategorisierung")
+    
+    with col2:
+        batch_size = st.number_input("Batch Size", min_value=10, max_value=100, value=50, step=10)
+    
+    if st.button("🚀 Starte AI-Kategorisierung", type="primary"):
+        # Finde die richtige Search Query Spalte
+        search_col = None
+        if 'Search Query' in df.columns:
+            search_col = 'Search Query'
+        elif 'Search Term' in df.columns:
+            search_col = 'Search Term'
+        else:
+            st.error("❌ 'Search Query' oder 'Search Term' Spalte nicht gefunden in den Daten.")
+            st.stop()
+        
+        with st.spinner("🤖 KI kategorisiert Search Queries... Das kann einen Moment dauern."):
             try:
-                if len(uploaded_files) == 1:
-                    df = st.session_state.processor.load_file(uploaded_files[0])
-                    st.success(f"✅ Datei geladen: {uploaded_files[0].name}")
-                else:
-                    df = st.session_state.processor.load_multiple_files(uploaded_files)
-                    st.success(f"✅ {len(uploaded_files)} Dateien geladen und kombiniert")
+                search_terms = df[search_col].unique().tolist()
+                progress_bar = st.progress(0)
+                status_text = st.empty()
                 
-                # Daten bereinigen
-                df_cleaned = st.session_state.processor.clean_data(df)
-                st.session_state.processed_data = df_cleaned
+                # Kategorisiere in Batches
+                all_categories = {}
+                total_batches = (len(search_terms) + batch_size - 1) // batch_size
                 
-                # Zeige Zusammenfassung
-                st.subheader("📈 Datenübersicht")
-                stats = st.session_state.processor.get_summary_stats(df_cleaned)
+                for i in range(0, len(search_terms), batch_size):
+                    batch = search_terms[i:i+batch_size]
+                    batch_num = (i // batch_size) + 1
+                    
+                    status_text.text(f"Verarbeite Batch {batch_num}/{total_batches}...")
+                    batch_categories = st.session_state.categorizer._categorize_batch(batch)
+                    all_categories.update(batch_categories)
+                    
+                    progress = min((i + batch_size) / len(search_terms), 1.0)
+                    progress_bar.progress(progress)
+                    
+                    time.sleep(0.5)  # Rate limiting
                 
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Queries", f"{stats['total_queries']:,}")
-                with col2:
-                    st.metric("Total Impressions", f"{stats['total_impressions']:,.0f}")
-                with col3:
-                    st.metric("Total Orders", f"{stats['total_orders']:,}")
-                with col4:
-                    st.metric("Total Sales", f"€{stats['total_sales']:,.2f}")
+                # Füge Kategorien zu DataFrame hinzu
+                df['Category'] = df[search_col].map(all_categories).fillna('Uncategorized')
+                st.session_state.categorized_data = df
+                st.session_state.categories = all_categories
                 
-                # Zeige Vorschau
-                st.subheader("👀 Datenvorschau")
-                st.dataframe(df_cleaned.head(20), use_container_width=True)
+                progress_bar.empty()
+                status_text.empty()
                 
-                # Download Option
-                csv = df_cleaned.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Bereinigte Daten als CSV herunterladen",
-                    data=csv,
-                    file_name="cleaned_sqp_data.csv",
-                    mime="text/csv"
-                )
+                st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
+                st.rerun()  # Aktualisiere die Seite um Kategorien anzuzeigen
                 
             except Exception as e:
-                st.error(f"❌ Fehler beim Verarbeiten der Dateien: {str(e)}")
+                st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
                 st.exception(e)
-
-elif page == "🤖 AI Categorization":
-    st.header("🤖 AI-Powered Categorization")
     
-    if st.session_state.processed_data is None:
-        st.warning("⚠️ Bitte lade zuerst Daten auf der 'Data Ingestion' Seite hoch.")
-    else:
-        df = st.session_state.processed_data
+    # Zeige Kategorien-Übersicht
+    if st.session_state.categorized_data is not None:
+        st.subheader("📊 Kategorien-Übersicht")
+        df_cat = st.session_state.categorized_data
         
-        st.markdown("""
-        ### Automatische Kategorisierung
-        Die KI kategorisiert automatisch alle Search Terms in logische Produktkategorien.
-        """)
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.info(f"📊 {len(df)} Search Queries bereit zur Kategorisierung")
-        
-        with col2:
-            batch_size = st.number_input("Batch Size", min_value=10, max_value=100, value=50, step=10)
-        
-        if st.button("🚀 Starte AI-Kategorisierung", type="primary"):
-            # Finde die richtige Search Query Spalte
-            search_col = None
-            if 'Search Query' in df.columns:
-                search_col = 'Search Query'
-            elif 'Search Term' in df.columns:
-                search_col = 'Search Term'
-            else:
-                st.error("❌ 'Search Query' oder 'Search Term' Spalte nicht gefunden in den Daten.")
-                st.stop()
-            
-            with st.spinner("🤖 KI kategorisiert Search Queries... Das kann einen Moment dauern."):
-                try:
-                    search_terms = df[search_col].unique().tolist()
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    # Kategorisiere in Batches
-                    all_categories = {}
-                    total_batches = (len(search_terms) + batch_size - 1) // batch_size
-                    
-                    for i in range(0, len(search_terms), batch_size):
-                        batch = search_terms[i:i+batch_size]
-                        batch_num = (i // batch_size) + 1
-                        
-                        status_text.text(f"Verarbeite Batch {batch_num}/{total_batches}...")
-                        batch_categories = st.session_state.categorizer._categorize_batch(batch)
-                        all_categories.update(batch_categories)
-                        
-                        progress = min((i + batch_size) / len(search_terms), 1.0)
-                        progress_bar.progress(progress)
-                        
-                        time.sleep(0.5)  # Rate limiting
-                    
-                    # Füge Kategorien zu DataFrame hinzu
-                    df['Category'] = df[search_col].map(all_categories).fillna('Uncategorized')
-                    st.session_state.categorized_data = df
-                    st.session_state.categories = all_categories
-                    
-                    progress_bar.empty()
-                    status_text.empty()
-                    
-                    st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
-                    
-                except Exception as e:
-                    st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
-                    st.exception(e)
-        
-        # Zeige Kategorien-Übersicht
-        if st.session_state.categorized_data is not None:
-            st.subheader("📊 Kategorien-Übersicht")
-            df_cat = st.session_state.categorized_data
-            
+        if 'Category' in df_cat.columns:
             category_counts = df_cat['Category'].value_counts().reset_index()
             category_counts.columns = ['Category', 'Count']
             
@@ -234,14 +230,22 @@ elif page == "🤖 AI Categorization":
                 mime="text/csv"
             )
 
-elif page == "📊 Dashboard":
-    st.header("📊 Visual Intelligence Dashboard")
+st.divider()
+
+# ============================================================================
+# SECTION 3: DASHBOARD
+# ============================================================================
+st.header("📊 Visual Intelligence Dashboard")
+
+if st.session_state.categorized_data is None:
+    st.warning("⚠️ Bitte führe zuerst die AI-Kategorisierung durch.")
+else:
+    df = st.session_state.categorized_data
     
-    if st.session_state.categorized_data is None:
-        st.warning("⚠️ Bitte führe zuerst die AI-Kategorisierung durch.")
+    # Prüfe ob Category Spalte existiert
+    if 'Category' not in df.columns:
+        st.error("❌ Keine Kategorien gefunden. Bitte führe zuerst die AI-Kategorisierung durch.")
     else:
-        df = st.session_state.categorized_data
-        
         # Opportunity Matrix
         st.subheader("🎯 Opportunity Matrix")
         st.markdown("""
@@ -251,7 +255,6 @@ elif page == "📊 Dashboard":
         
         try:
             # Bereite Daten für Opportunity Matrix vor
-            # Finde die richtige Search Query Spalte
             search_col = 'Search Query' if 'Search Query' in df.columns else 'Search Term'
             category_stats = df.groupby('Category').agg({
                 'Impressions': 'sum',
@@ -279,6 +282,7 @@ elif page == "📊 Dashboard":
             
         except Exception as e:
             st.error(f"Fehler beim Erstellen der Opportunity Matrix: {e}")
+            st.exception(e)
         
         st.divider()
         
@@ -326,14 +330,21 @@ elif page == "📊 Dashboard":
         except Exception as e:
             st.error(f"Fehler beim Erstellen der Heatmap: {e}")
 
-elif page == "🔍 Deep Dive Analytics":
-    st.header("🔍 Deep Dive Analytics")
+st.divider()
+
+# ============================================================================
+# SECTION 4: DEEP DIVE ANALYTICS
+# ============================================================================
+st.header("🔍 Deep Dive Analytics")
+
+if st.session_state.categorized_data is None:
+    st.warning("⚠️ Bitte führe zuerst die AI-Kategorisierung durch.")
+else:
+    df = st.session_state.categorized_data
     
-    if st.session_state.categorized_data is None:
-        st.warning("⚠️ Bitte führe zuerst die AI-Kategorisierung durch.")
+    if 'Category' not in df.columns:
+        st.error("❌ Keine Kategorien gefunden. Bitte führe zuerst die AI-Kategorisierung durch.")
     else:
-        df = st.session_state.categorized_data
-        
         # Filter-Optionen
         st.subheader("🔎 Filter & Suche")
         
@@ -356,7 +367,6 @@ elif page == "🔍 Deep Dive Analytics":
             df_filtered = df_filtered[df_filtered['Category'] == selected_category]
         
         if search_term_filter:
-            # Finde die richtige Search Query Spalte
             search_col = 'Search Query' if 'Search Query' in df_filtered.columns else 'Search Term'
             if search_col in df_filtered.columns:
                 df_filtered = df_filtered[
@@ -396,7 +406,6 @@ elif page == "🔍 Deep Dive Analytics":
             st.metric("Avg CVR", f"{df_filtered['Conversion Rate'].mean():.2f}%")
         
         # Daten-Tabelle
-        # Finde die richtige Search Query Spalte
         search_col = 'Search Query' if 'Search Query' in df_filtered.columns else 'Search Term'
         display_cols = [search_col, 'Category', 'Impressions', 'Clicks', 'CTR', 
                        'Orders', 'Sales', 'Conversion Rate']
@@ -424,4 +433,3 @@ st.markdown("""
     <p>Amazon Search Query Performance Analyzer | Privacy First | Powered by ChatGPT</p>
 </div>
 """, unsafe_allow_html=True)
-
