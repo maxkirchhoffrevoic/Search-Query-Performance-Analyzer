@@ -246,6 +246,7 @@ else:
         if 'Category' in df_cat.columns:
             category_counts = df_cat['Category'].value_counts().reset_index()
             category_counts.columns = ['Category', 'Count']
+            category_counts = category_counts.head(20)  # Beschränke auf Top 20 Kategorien
             
             col1, col2 = st.columns(2)
             
