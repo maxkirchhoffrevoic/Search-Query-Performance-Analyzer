@@ -14,6 +14,8 @@ class AICategorizer:
     
     def __init__(self):
         self.client = openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+        self.model = OPENAI_MODEL
+        self.fallback_model = "gpt-4-turbo-preview"  # Fallback falls GPT-5.1 nicht verfügbar
     
     def categorize_search_terms(
         self, 
@@ -72,7 +74,7 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
         try:
             # API-Parameter für GPT-5.1 Thinking
             api_params = {
-                "model": OPENAI_MODEL,
+                "model": self.model,
                 "messages": [
                     {"role": "system", "content": "Du bist ein Experte für Produktkategorisierung. Antworte immer nur mit gültigem JSON."},
                     {"role": "user", "content": prompt}
@@ -83,12 +85,15 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
             }
             
             # Füge reasoning_effort hinzu, wenn GPT-5.1 verwendet wird
-            if "gpt-5" in OPENAI_MODEL.lower():
+            if "gpt-5" in self.model.lower():
                 api_params["reasoning_effort"] = REASONING_EFFORT
             
             response = self.client.chat.completions.create(**api_params)
             
             result_text = response.choices[0].message.content.strip()
+            
+            # Debug: Zeige erste 200 Zeichen der Antwort
+            print(f"DEBUG: API Response (first 200 chars): {result_text[:200]}")
             
             # Mit response_format={"type": "json_object"} sollte die Antwort bereits valides JSON sein
             # Aber für Sicherheit entfernen wir trotzdem mögliche Markdown-Code-Blöcke
@@ -104,15 +109,53 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
             # Parse JSON
             categories = json.loads(result_text)
             
+            # Prüfe ob alle Search Terms im Ergebnis sind
+            missing_terms = [term for term in search_terms if term not in categories]
+            if missing_terms:
+                print(f"DEBUG: Missing terms in response: {missing_terms[:5]}...")
+                # Füge fehlende Terms als Uncategorized hinzu
+                for term in missing_terms:
+                    categories[term] = "Uncategorized"
+            
+            print(f"DEBUG: Successfully categorized {len(categories)} terms")
             return categories
             
+        except openai.APIError as e:
+            error_msg = f"OpenAI API Error: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            # Versuche Fallback auf gpt-4-turbo wenn gpt-5.1 fehlschlägt
+            if "gpt-5" in OPENAI_MODEL.lower():
+                print("DEBUG: Trying fallback to gpt-4-turbo-preview")
+                try:
+                    api_params_fallback = {
+                        "model": "gpt-4-turbo-preview",
+                        "messages": [
+                            {"role": "system", "content": "Du bist ein Experte für Produktkategorisierung. Antworte immer nur mit gültigem JSON."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 4096,
+                        "response_format": {"type": "json_object"}
+                    }
+                    response = self.client.chat.completions.create(**api_params_fallback)
+                    result_text = response.choices[0].message.content.strip()
+                    categories = json.loads(result_text)
+                    return categories
+                except Exception as e2:
+                    print(f"ERROR: Fallback also failed: {e2}")
+            
+            return {term: "Uncategorized" for term in search_terms}
         except json.JSONDecodeError as e:
-            print(f"JSON Parse Error: {e}")
-            print(f"Response was: {result_text}")
+            error_msg = f"JSON Parse Error: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            print(f"DEBUG: Response was: {result_text[:500] if 'result_text' in locals() else 'No response'}")
             # Fallback: Einfache Kategorisierung
             return {term: "Uncategorized" for term in search_terms}
         except Exception as e:
-            print(f"Error in AI categorization: {e}")
+            error_msg = f"Unexpected Error in AI categorization: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            import traceback
+            print(f"DEBUG: Traceback: {traceback.format_exc()}")
             return {term: "Uncategorized" for term in search_terms}
     
     def identify_niche_opportunities(
