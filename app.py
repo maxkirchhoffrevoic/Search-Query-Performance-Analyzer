@@ -194,16 +194,16 @@ else:
                 st.success(f"✅ {len(search_terms)} Search Queries kategorisiert!")
                 st.rerun()  # Aktualisiere die Seite um Kategorien anzuzeigen
                 
-                except Exception as e:
-                    st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
-                    st.exception(e)
-                    # Zeige Debug-Informationen
-                    with st.expander("🔍 Debug-Informationen"):
-                        st.code(f"""
+            except Exception as e:
+                st.error(f"❌ Fehler bei der Kategorisierung: {str(e)}")
+                st.exception(e)
+                # Zeige Debug-Informationen
+                with st.expander("🔍 Debug-Informationen"):
+                    st.code(f"""
 Fehler: {str(e)}
-Modell: {st.session_state.categorizer.client.model if hasattr(st.session_state.categorizer, 'client') else 'N/A'}
+Modell: {st.session_state.categorizer.model if hasattr(st.session_state.categorizer, 'model') else 'N/A'}
 API Key vorhanden: {bool(st.session_state.categorizer.client) if hasattr(st.session_state.categorizer, 'client') else False}
-                        """)
+                    """)
     
     # Zeige Kategorien-Übersicht
     if st.session_state.categorized_data is not None:
