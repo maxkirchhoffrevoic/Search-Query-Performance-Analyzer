@@ -42,6 +42,8 @@ st.markdown("""
 # Initialize session state
 if 'processed_data' not in st.session_state:
     st.session_state.processed_data = None
+if 'all_processed_data' not in st.session_state:
+    st.session_state.all_processed_data = []  # Liste aller hochgeladenen Datensätze
 if 'categorized_data' not in st.session_state:
     st.session_state.categorized_data = None
 if 'categories' not in st.session_state:
@@ -69,8 +71,19 @@ st.header("📤 Smart Ingestion Engine")
 st.markdown("""
 ### Drag & Drop Upload
 Lade deine Amazon Search Query Performance Reports hoch (.csv oder .xlsx).
-Du kannst auch mehrere Dateien gleichzeitig hochladen für Batch Processing.
+
+**Mehrere Monate kombinieren**: Du kannst alle monatlichen Reports auf einmal auswählen und hochladen - sie werden automatisch kombiniert!
 """)
+
+# Button zum Zurücksetzen aller Daten
+if st.session_state.processed_data is not None:
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🗑️ Alle Daten zurücksetzen", type="secondary"):
+            st.session_state.all_processed_data = []
+            st.session_state.processed_data = None
+            st.session_state.categorized_data = None
+            st.rerun()
 
 uploaded_files = st.file_uploader(
     "Wähle Dateien aus",
@@ -82,6 +95,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     with st.spinner("Verarbeite Dateien..."):
         try:
+            # Lade alle Dateien (einzeln oder mehrere auf einmal)
             if len(uploaded_files) == 1:
                 df = st.session_state.processor.load_file(uploaded_files[0])
                 st.success(f"✅ Datei geladen: {uploaded_files[0].name}")
@@ -91,7 +105,21 @@ if uploaded_files:
             
             # Daten bereinigen
             df_cleaned = st.session_state.processor.clean_data(df)
-            st.session_state.processed_data = df_cleaned
+            
+            # Kombiniere mit bereits vorhandenen Daten (falls vorhanden)
+            if st.session_state.processed_data is not None:
+                # Kombiniere neue Daten mit bestehenden
+                df_combined = pd.concat([st.session_state.processed_data, df_cleaned], ignore_index=True)
+                # Entferne Duplikate basierend auf Search Query + Month
+                search_col = 'Search Query' if 'Search Query' in df_combined.columns else 'Search Term'
+                if 'Month' in df_combined.columns and search_col in df_combined.columns:
+                    df_combined = df_combined.drop_duplicates(subset=[search_col, 'Month'], keep='last')
+                elif search_col in df_combined.columns:
+                    df_combined = df_combined.drop_duplicates(subset=[search_col], keep='last')
+                st.session_state.processed_data = df_combined
+                st.info(f"📊 Neue Daten hinzugefügt. Total: {len(df_combined)} Zeilen aus allen hochgeladenen Reports")
+            else:
+                st.session_state.processed_data = df_cleaned
             
             # Zeige Zusammenfassung
             st.subheader("📈 Datenübersicht")
@@ -109,7 +137,19 @@ if uploaded_files:
             
             # Zeige Vorschau
             st.subheader("👀 Datenvorschau")
-            st.dataframe(df_cleaned.head(20), use_container_width=True)
+            st.dataframe(st.session_state.processed_data.head(20), use_container_width=True)
+            
+            # Monatliche Trend-Analyse
+            if 'Month' in st.session_state.processed_data.columns or 'Reporting Date' in st.session_state.processed_data.columns:
+                st.subheader("📅 Monatliche Trend-Analyse")
+                try:
+                    fig_monthly = st.session_state.viz_engine.create_monthly_trends(
+                        st.session_state.processed_data,
+                        date_col='Month' if 'Month' in st.session_state.processed_data.columns else None
+                    )
+                    st.plotly_chart(fig_monthly, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"⚠️ Monatliche Trend-Analyse konnte nicht erstellt werden: {e}")
             
             # Download Option
             csv = df_cleaned.to_csv(index=False).encode('utf-8')

@@ -105,10 +105,17 @@ class DataProcessor:
         # Duplikate entfernen (basierend auf Search Query + Datum falls vorhanden)
         search_col = 'Search Query' if 'Search Query' in combined_df.columns else 'Search Term'
         if search_col in combined_df.columns:
-            combined_df = combined_df.drop_duplicates(
-                subset=[search_col], 
-                keep='last'
-            )
+            # Wenn Reporting Date vorhanden, behalte beide für Duplikatsprüfung
+            if 'Reporting Date' in combined_df.columns:
+                combined_df = combined_df.drop_duplicates(
+                    subset=[search_col, 'Reporting Date'], 
+                    keep='last'
+                )
+            else:
+                combined_df = combined_df.drop_duplicates(
+                    subset=[search_col], 
+                    keep='last'
+                )
         
         self.raw_data = combined_df
         return combined_df
@@ -140,6 +147,7 @@ class DataProcessor:
             'Brand Share %': ['Impressions: Brand Share %'],
             'Search Query Volume': ['Search Query Volume'],
             'Search Query Score': ['Search Query Score'],
+            'Reporting Date': ['Reporting Date', 'Date', 'date', 'Report Date'],
         }
         
         standardized_df = df.copy()
@@ -194,6 +202,15 @@ class DataProcessor:
         # Standardisiere Orders Spalte (kann Purchases: Total Count sein)
         if 'Orders' not in df.columns and 'Purchases: Total Count' in df.columns:
             df['Orders'] = df['Purchases: Total Count']
+        
+        # Konvertiere Reporting Date zu datetime falls vorhanden
+        if 'Reporting Date' in df.columns:
+            try:
+                df['Reporting Date'] = pd.to_datetime(df['Reporting Date'], errors='coerce')
+                # Erstelle Monatsspalte für Gruppierung
+                df['Month'] = df['Reporting Date'].dt.to_period('M').astype(str)
+            except:
+                pass
         
         # Berechne Sales aus Purchases * Price falls Sales nicht vorhanden
         if 'Sales' not in df.columns or (df['Sales'].sum() == 0 if 'Sales' in df.columns else True):

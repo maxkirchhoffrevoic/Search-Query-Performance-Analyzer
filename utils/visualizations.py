@@ -105,6 +105,159 @@ class VisualizationEngine:
         return fig
     
     @staticmethod
+    def create_monthly_trends(
+        df: pd.DataFrame,
+        date_col: str = 'Month',
+        impressions_col: str = 'Impressions',
+        brand_impressions_col: str = 'Brand Impressions',
+        sales_col: str = 'Sales',
+        brand_share_col: str = 'Brand Share %'
+    ) -> go.Figure:
+        """
+        Erstellt monatliche Trend-Analyse mit Market Impressions, Brand Share, Sales und Brand Share
+        
+        Args:
+            df: DataFrame mit monatlichen Daten
+            date_col: Spalte mit Monat
+            impressions_col: Spalte mit Market Impressions
+            brand_impressions_col: Spalte mit Brand Impressions
+            sales_col: Spalte mit Sales
+            brand_share_col: Spalte mit Brand Share %
+            
+        Returns:
+            go.Figure: Plotly Figure mit 4 Subplots
+        """
+        # Gruppiere nach Monat
+        if date_col not in df.columns:
+            # Versuche Reporting Date zu verwenden
+            if 'Reporting Date' in df.columns:
+                df['Month'] = pd.to_datetime(df['Reporting Date'], errors='coerce').dt.to_period('M').astype(str)
+                date_col = 'Month'
+            else:
+                # Fallback: Verwende Index
+                fig = go.Figure()
+                fig.add_annotation(text="Keine Datumsinformationen verfügbar", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+                return fig
+        
+        monthly_data = df.groupby(date_col).agg({
+            impressions_col: 'sum',
+            brand_impressions_col: 'sum' if brand_impressions_col in df.columns else lambda x: 0,
+            sales_col: 'sum',
+            brand_share_col: 'mean' if brand_share_col in df.columns else lambda x: 0
+        }).reset_index()
+        
+        # Berechne Brand Share für Impressions falls nicht vorhanden
+        if brand_impressions_col in df.columns:
+            monthly_data['Brand Share Impressions %'] = (
+                monthly_data[brand_impressions_col] / monthly_data[impressions_col] * 100
+            ).fillna(0)
+        else:
+            monthly_data['Brand Share Impressions %'] = monthly_data.get(brand_share_col, 0)
+        
+        # Berechne Brand Share für Sales
+        total_sales = monthly_data[sales_col].sum()
+        if total_sales > 0 and brand_impressions_col in df.columns:
+            # Schätze Brand Sales aus Brand Impressions Share
+            monthly_data['Brand Sales'] = monthly_data[sales_col] * (monthly_data['Brand Share Impressions %'] / 100)
+            monthly_data['Brand Share Sales %'] = (
+                monthly_data['Brand Sales'] / monthly_data[sales_col] * 100
+            ).fillna(0)
+        else:
+            monthly_data['Brand Share Sales %'] = monthly_data.get(brand_share_col, 0)
+        
+        # Sortiere nach Monat
+        monthly_data = monthly_data.sort_values(date_col)
+        
+        # Erstelle Subplots: 2x2 Grid
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=(
+                'Market Impressions pro Monat',
+                'Brand Share (Impressions) pro Monat',
+                'Sales pro Monat',
+                'Brand Share (Sales) pro Monat'
+            ),
+            specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                   [{"secondary_y": False}, {"secondary_y": False}]]
+        )
+        
+        # 1. Market Impressions
+        fig.add_trace(
+            go.Bar(
+                x=monthly_data[date_col],
+                y=monthly_data[impressions_col],
+                name="Market Impressions",
+                marker_color='#1f77b4',
+                hovertemplate='<b>%{x}</b><br>Market Impressions: %{y:,.0f}<extra></extra>'
+            ),
+            row=1, col=1
+        )
+        
+        # 2. Brand Share (Impressions)
+        fig.add_trace(
+            go.Scatter(
+                x=monthly_data[date_col],
+                y=monthly_data['Brand Share Impressions %'],
+                name="Brand Share %",
+                mode='lines+markers',
+                line=dict(color='#ff7f0e', width=3),
+                marker=dict(size=8),
+                hovertemplate='<b>%{x}</b><br>Brand Share: %{y:.2f}%<extra></extra>'
+            ),
+            row=1, col=2
+        )
+        
+        # 3. Sales
+        fig.add_trace(
+            go.Bar(
+                x=monthly_data[date_col],
+                y=monthly_data[sales_col],
+                name="Sales",
+                marker_color='#2ca02c',
+                hovertemplate='<b>%{x}</b><br>Sales: €%{y:,.2f}<extra></extra>'
+            ),
+            row=2, col=1
+        )
+        
+        # 4. Brand Share (Sales)
+        fig.add_trace(
+            go.Scatter(
+                x=monthly_data[date_col],
+                y=monthly_data['Brand Share Sales %'],
+                name="Brand Share %",
+                mode='lines+markers',
+                line=dict(color='#d62728', width=3),
+                marker=dict(size=8),
+                hovertemplate='<b>%{x}</b><br>Brand Share: %{y:.2f}%<extra></extra>'
+            ),
+            row=2, col=2
+        )
+        
+        # Update Layout
+        fig.update_xaxes(title_text="Monat", row=1, col=1)
+        fig.update_xaxes(title_text="Monat", row=1, col=2)
+        fig.update_xaxes(title_text="Monat", row=2, col=1)
+        fig.update_xaxes(title_text="Monat", row=2, col=2)
+        
+        fig.update_yaxes(title_text="Impressions", row=1, col=1)
+        fig.update_yaxes(title_text="Brand Share (%)", row=1, col=2)
+        fig.update_yaxes(title_text="Sales (€)", row=2, col=1)
+        fig.update_yaxes(title_text="Brand Share (%)", row=2, col=2)
+        
+        fig.update_layout(
+            title={
+                'text': 'Monatliche Trend-Analyse: Market Impressions & Brand Share',
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            template='plotly_white',
+            height=800,
+            showlegend=False
+        )
+        
+        return fig
+    
+    @staticmethod
     def create_trend_analysis(
         df: pd.DataFrame,
         date_col: Optional[str] = None,
@@ -312,4 +465,3 @@ class VisualizationEngine:
         )
         
         return fig
-
