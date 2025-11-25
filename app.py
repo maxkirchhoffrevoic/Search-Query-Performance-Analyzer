@@ -149,20 +149,32 @@ else:
     with col2:
         batch_size = st.number_input("Batch Size", min_value=10, max_value=100, value=50, step=10)
     
+    # Debug: Zeige verfügbare Spalten
+    with st.expander("🔍 Debug: Verfügbare Spalten"):
+        st.write("Spalten im DataFrame:", list(df.columns))
+        st.write("Hat 'Search Query':", 'Search Query' in df.columns)
+        st.write("Hat 'Search Term':", 'Search Term' in df.columns)
+        if 'Search Query' in df.columns:
+            st.write("Beispiel Search Query:", df['Search Query'].iloc[0] if len(df) > 0 else "Keine Daten")
+    
     if st.button("🚀 Starte AI-Kategorisierung", type="primary"):
         # Finde die richtige Search Query Spalte
         search_col = None
         if 'Search Query' in df.columns:
             search_col = 'Search Query'
+            st.info(f"✅ Verwende Spalte: 'Search Query'")
         elif 'Search Term' in df.columns:
             search_col = 'Search Term'
+            st.info(f"✅ Verwende Spalte: 'Search Term'")
         else:
             st.error("❌ 'Search Query' oder 'Search Term' Spalte nicht gefunden in den Daten.")
+            st.write("Verfügbare Spalten:", list(df.columns))
             st.stop()
         
         with st.spinner("🤖 KI kategorisiert Search Queries... Das kann einen Moment dauern."):
             try:
                 search_terms = df[search_col].unique().tolist()
+                st.info(f"📊 Gefunden: {len(search_terms)} einzigartige Search Queries")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -183,8 +195,21 @@ else:
                     
                     time.sleep(0.5)  # Rate limiting
                 
+                # Debug: Zeige Kategorisierungs-Ergebnisse
+                st.write(f"📊 Kategorien erhalten: {len(all_categories)}")
+                if len(all_categories) > 0:
+                    # Zeige erste 5 Kategorien als Beispiel
+                    sample_categories = dict(list(all_categories.items())[:5])
+                    st.json(sample_categories)
+                
                 # Füge Kategorien zu DataFrame hinzu
                 df['Category'] = df[search_col].map(all_categories).fillna('Uncategorized')
+                
+                # Debug: Zeige wie viele Uncategorized sind
+                uncategorized_count = (df['Category'] == 'Uncategorized').sum()
+                if uncategorized_count > 0:
+                    st.warning(f"⚠️ {uncategorized_count} Search Queries wurden als 'Uncategorized' markiert")
+                
                 st.session_state.categorized_data = df
                 st.session_state.categories = all_categories
                 
@@ -199,11 +224,19 @@ else:
                 st.exception(e)
                 # Zeige Debug-Informationen
                 with st.expander("🔍 Debug-Informationen"):
-                    st.code(f"""
-Fehler: {str(e)}
-Modell: {st.session_state.categorizer.model if hasattr(st.session_state.categorizer, 'model') else 'N/A'}
-API Key vorhanden: {bool(st.session_state.categorizer.client) if hasattr(st.session_state.categorizer, 'client') else False}
-                    """)
+                    debug_info = {
+                        "Fehler": str(e),
+                        "Modell": st.session_state.categorizer.model if hasattr(st.session_state.categorizer, 'model') else 'N/A',
+                        "API Key vorhanden": bool(st.session_state.categorizer.client) if hasattr(st.session_state.categorizer, 'client') else False,
+                        "Verwendete Spalte": search_col if 'search_col' in locals() else 'N/A',
+                        "Anzahl Search Queries": len(search_terms) if 'search_terms' in locals() else 0,
+                        "Anzahl Kategorien erhalten": len(all_categories) if 'all_categories' in locals() else 0
+                    }
+                    st.json(debug_info)
+                    
+                    if 'all_categories' in locals() and len(all_categories) > 0:
+                        st.write("**Erste 10 Kategorien:**")
+                        st.json(dict(list(all_categories.items())[:10]))
     
     # Zeige Kategorien-Übersicht
     if st.session_state.categorized_data is not None:

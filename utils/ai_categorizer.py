@@ -93,7 +93,9 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
             result_text = response.choices[0].message.content.strip()
             
             # Debug: Zeige erste 200 Zeichen der Antwort
-            print(f"DEBUG: API Response (first 200 chars): {result_text[:200]}")
+            import sys
+            print(f"DEBUG: API Response (first 200 chars): {result_text[:200]}", file=sys.stderr)
+            print(f"DEBUG: Number of search terms sent: {len(search_terms)}", file=sys.stderr)
             
             # Mit response_format={"type": "json_object"} sollte die Antwort bereits valides JSON sein
             # Aber für Sicherheit entfernen wir trotzdem mögliche Markdown-Code-Blöcke
@@ -112,12 +114,15 @@ Format: {{"Suchbegriff 1": "Kategorie 1", "Suchbegriff 2": "Kategorie 2", ...}}"
             # Prüfe ob alle Search Terms im Ergebnis sind
             missing_terms = [term for term in search_terms if term not in categories]
             if missing_terms:
-                print(f"DEBUG: Missing terms in response: {missing_terms[:5]}...")
+                import sys
+                print(f"DEBUG: Missing terms in response: {missing_terms[:5]}...", file=sys.stderr)
                 # Füge fehlende Terms als Uncategorized hinzu
                 for term in missing_terms:
                     categories[term] = "Uncategorized"
             
-            print(f"DEBUG: Successfully categorized {len(categories)} terms")
+            import sys
+            print(f"DEBUG: Successfully categorized {len(categories)} terms", file=sys.stderr)
+            print(f"DEBUG: Sample categories: {dict(list(categories.items())[:3])}", file=sys.stderr)
             return categories
             
         except openai.APIError as e:
