@@ -1,0 +1,175 @@
+"""
+Data Processing Engine für Amazon SQP Reports
+"""
+import pandas as pd
+import numpy as np
+from typing import List, Dict, Optional
+import io
+
+
+class DataProcessor:
+    """Verarbeitet Amazon Search Query Performance Reports"""
+    
+    def __init__(self):
+        self.processed_data = None
+        self.raw_data = None
+    
+    def load_file(self, uploaded_file) -> pd.DataFrame:
+        """
+        Lädt CSV oder XLSX Datei und gibt DataFrame zurück
+        
+        Args:
+            uploaded_file: Streamlit UploadedFile Objekt
+            
+        Returns:
+            pd.DataFrame: Geladene Daten
+        """
+        try:
+            # Dateityp erkennen
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            
+            if file_extension == 'csv':
+                # CSV mit verschiedenen Encodings versuchen
+                try:
+                    df = pd.read_csv(uploaded_file, encoding='utf-8')
+                except UnicodeDecodeError:
+                    df = pd.read_csv(uploaded_file, encoding='latin-1')
+            elif file_extension in ['xlsx', 'xls']:
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+            else:
+                raise ValueError(f"Nicht unterstützter Dateityp: {file_extension}")
+            
+            self.raw_data = df
+            return df
+            
+        except Exception as e:
+            raise Exception(f"Fehler beim Laden der Datei: {str(e)}")
+    
+    def load_multiple_files(self, uploaded_files: List) -> pd.DataFrame:
+        """
+        Lädt mehrere Dateien und kombiniert sie
+        
+        Args:
+            uploaded_files: Liste von Streamlit UploadedFile Objekten
+            
+        Returns:
+            pd.DataFrame: Kombinierte Daten
+        """
+        dataframes = []
+        
+        for file in uploaded_files:
+            df = self.load_file(file)
+            dataframes.append(df)
+        
+        # Alle DataFrames kombinieren
+        combined_df = pd.concat(dataframes, ignore_index=True)
+        
+        # Duplikate entfernen (basierend auf Search Term + Datum falls vorhanden)
+        if 'Search Term' in combined_df.columns:
+            combined_df = combined_df.drop_duplicates(
+                subset=['Search Term'], 
+                keep='last'
+            )
+        
+        self.raw_data = combined_df
+        return combined_df
+    
+    def standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardisiert Spaltennamen für Amazon SQP Reports
+        
+        Args:
+            df: DataFrame mit möglicherweise unterschiedlichen Spaltennamen
+            
+        Returns:
+            pd.DataFrame: DataFrame mit standardisierten Spaltennamen
+        """
+        # Mapping für häufige Spaltennamen-Varianten
+        column_mapping = {
+            'Search Term': ['Search Term', 'search_term', 'Query', 'query', 'Search Query'],
+            'Impressions': ['Impressions', 'impressions', 'Impr.', 'Impr'],
+            'Clicks': ['Clicks', 'clicks', 'Click', 'click'],
+            'CTR': ['CTR', 'ctr', 'Click-Through Rate'],
+            'Orders': ['Orders', 'orders', 'Order', 'order', 'Total Orders'],
+            'Sales': ['Sales', 'sales', 'Revenue', 'revenue', 'Total Sales'],
+            'Conversion Rate': ['Conversion Rate', 'conversion_rate', 'CVR', 'cvr', 'Conv. Rate'],
+        }
+        
+        standardized_df = df.copy()
+        
+        # Spaltennamen normalisieren
+        for standard_name, variants in column_mapping.items():
+            for variant in variants:
+                if variant in standardized_df.columns and standard_name not in standardized_df.columns:
+                    standardized_df.rename(columns={variant: standard_name}, inplace=True)
+        
+        return standardized_df
+    
+    def clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Bereinigt und bereitet Daten für die Analyse vor
+        
+        Args:
+            df: DataFrame mit rohen Daten
+            
+        Returns:
+            pd.DataFrame: Bereinigte Daten
+        """
+        df = self.standardize_columns(df)
+        
+        # Numerische Spalten bereinigen
+        numeric_columns = ['Impressions', 'Clicks', 'Orders', 'Sales', 'CTR', 'Conversion Rate']
+        
+        for col in numeric_columns:
+            if col in df.columns:
+                # Entferne nicht-numerische Zeichen und konvertiere
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(r'[^\d.]', '', regex=True),
+                    errors='coerce'
+                )
+        
+        # NaN Werte in numerischen Spalten mit 0 ersetzen
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = df[col].fillna(0)
+        
+        # Berechne zusätzliche Metriken falls nicht vorhanden
+        if 'CTR' not in df.columns and 'Clicks' in df.columns and 'Impressions' in df.columns:
+            df['CTR'] = (df['Clicks'] / df['Impressions'].replace(0, np.nan) * 100).fillna(0)
+        
+        if 'Conversion Rate' not in df.columns and 'Orders' in df.columns and 'Clicks' in df.columns:
+            df['Conversion Rate'] = (df['Orders'] / df['Clicks'].replace(0, np.nan) * 100).fillna(0)
+        
+        # Berechne Market Share (falls Sales vorhanden)
+        if 'Sales' in df.columns:
+            total_sales = df['Sales'].sum()
+            if total_sales > 0:
+                df['Market Share %'] = (df['Sales'] / total_sales * 100).round(2)
+            else:
+                df['Market Share %'] = 0
+        
+        self.processed_data = df
+        return df
+    
+    def get_summary_stats(self, df: pd.DataFrame) -> Dict:
+        """
+        Berechnet Zusammenfassungsstatistiken
+        
+        Args:
+            df: DataFrame mit verarbeiteten Daten
+            
+        Returns:
+            Dict: Dictionary mit Statistiken
+        """
+        stats = {
+            'total_queries': len(df),
+            'total_impressions': df['Impressions'].sum() if 'Impressions' in df.columns else 0,
+            'total_clicks': df['Clicks'].sum() if 'Clicks' in df.columns else 0,
+            'total_orders': df['Orders'].sum() if 'Orders' in df.columns else 0,
+            'total_sales': df['Sales'].sum() if 'Sales' in df.columns else 0,
+            'avg_ctr': df['CTR'].mean() if 'CTR' in df.columns else 0,
+            'avg_conversion_rate': df['Conversion Rate'].mean() if 'Conversion Rate' in df.columns else 0,
+        }
+        
+        return stats
+
