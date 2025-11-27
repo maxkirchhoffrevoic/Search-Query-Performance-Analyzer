@@ -423,11 +423,11 @@ else:
         # Market Trend Analysis
         st.subheader("📈 Market Trend Analysis")
         st.markdown("""
-        Diese Dual-Achsen-Linie zeigt pro Zeitraum oder Kategorie sowohl das **Gesamtvolumen (Impressions)** als auch deine **Sales Velocity**.
-        * Die blaue Linie misst, wie sich das Marktvolumen entwickelt – wächst die Kategorie oder schrumpft sie?
-        * Die orange Linie zeigt, ob deine eigenen Sales Schritt halten, schneller wachsen oder zurückfallen.
+        Dieser gruppierte Balken-Chart funktioniert wie das Share-of-Voice-Chart:
+        * **Balken 1 (blau)** zeigt das Market Volume (Impressions) je Zeitraum oder Kategorie.
+        * **Balken 2 (orange)** zeigt deine Sales im selben Zeitraum.
         
-        Ein Auseinanderlaufen der Linien bedeutet: Das Marktvolumen entwickelt sich anders als dein Sales-Anteil. So erkennst du frühzeitig, wo du Marktanteile verlierst oder gewinnst.
+        So erkennst du sofort, wo dein Sales-Wachstum mit dem Markt skaliert – oder wo du trotz hohen Volumens noch Potenzial hast.
         """)
         
         try:

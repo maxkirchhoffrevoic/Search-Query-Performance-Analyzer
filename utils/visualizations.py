@@ -265,10 +265,10 @@ class VisualizationEngine:
         sales_col: str = 'Sales'
     ) -> go.Figure:
         """
-        Erstellt Dual-Axis Trend Analysis Chart
+        Erstellt einen gruppierten Bar-Chart (analog Share of Voice) für Volume vs. Sales
         
         Args:
-            df: DataFrame mit Zeitreihen-Daten
+            df: DataFrame mit Zeit- oder Kategorie-Daten
             date_col: Spalte mit Datum (optional)
             impressions_col: Spalte mit Impressions
             sales_col: Spalte mit Sales
@@ -276,60 +276,62 @@ class VisualizationEngine:
         Returns:
             go.Figure: Plotly Figure
         """
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-        
-        # Wenn kein Datum vorhanden, aggregiere nach Kategorie
+        # Wenn Datum vorhanden → nach Datum sortieren, sonst nach Category gruppieren
         if date_col and date_col in df.columns:
-            df_sorted = df.sort_values(date_col)
-            x_axis = df_sorted[date_col]
+            df_grouped = df.sort_values(date_col)[[date_col, impressions_col, sales_col]]
+            x_axis = df_grouped[date_col]
         else:
-            # Fallback: Verwende Index oder Kategorie
             if 'Category' in df.columns:
-                df_sorted = df.groupby('Category').agg({
+                df_grouped = df.groupby('Category').agg({
                     impressions_col: 'sum',
                     sales_col: 'sum'
                 }).reset_index()
-                x_axis = df_sorted['Category']
+                x_axis = df_grouped['Category']
             else:
-                x_axis = df.index
+                df_grouped = df.reset_index()
+                x_axis = df_grouped.index
         
-        # Impressions (Primary Y-Axis)
-        fig.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=df_sorted[impressions_col] if 'df_sorted' in locals() else df[impressions_col],
-                name="Market Volume (Impressions)",
-                line=dict(color='#1f77b4', width=3),
-                mode='lines+markers'
-            ),
-            secondary_y=False,
-        )
+        fig = go.Figure()
         
-        # Sales (Secondary Y-Axis)
-        fig.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=df_sorted[sales_col] if 'df_sorted' in locals() else df[sales_col],
-                name="Sales Velocity",
-                line=dict(color='#ff7f0e', width=3),
-                mode='lines+markers'
-            ),
-            secondary_y=True,
-        )
+        # Market Impressions Bar
+        fig.add_trace(go.Bar(
+            name='Market Volume (Impressions)',
+            x=x_axis,
+            y=df_grouped[impressions_col],
+            marker_color='#1f77b4',
+            offsetgroup=0,
+            hovertemplate='<b>%{x}</b><br>Market Volume: %{y:,.0f}<extra></extra>'
+        ))
         
-        fig.update_xaxes(title_text="Zeit / Kategorie")
-        fig.update_yaxes(title_text="Market Volume (Impressions)", secondary_y=False)
-        fig.update_yaxes(title_text="Sales Velocity", secondary_y=True)
+        # Sales Bar (sekundäre Achse)
+        fig.add_trace(go.Bar(
+            name='Sales',
+            x=x_axis,
+            y=df_grouped[sales_col],
+            marker_color='#ff7f0e',
+            offsetgroup=1,
+            yaxis='y2',
+            hovertemplate='<b>%{x}</b><br>Sales: €%{y:,.2f}<extra></extra>'
+        ))
         
         fig.update_layout(
             title={
-                'text': 'Market Trend Analysis: Volume vs. Sales Velocity',
+                'text': 'Market Trend Analysis: Volume vs. Sales (Grouped Bars)',
                 'x': 0.5,
                 'xanchor': 'center'
             },
+            barmode='group',
             template='plotly_white',
             height=500,
-            hovermode='x unified'
+            xaxis=dict(title='Zeit / Kategorie'),
+            yaxis=dict(title='Market Volume (Impressions)'),
+            yaxis2=dict(
+                title='Sales',
+                overlaying='y',
+                side='right',
+                showgrid=False
+            ),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5)
         )
         
         return fig
